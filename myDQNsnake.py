@@ -9,7 +9,7 @@ Created on Thu Apr  2 22:49:39 2020
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Conv2D, MaxPool2D, Flatten
 import random
 import numpy as np
 #from operator import add
@@ -26,7 +26,7 @@ def define_parameters():
     params['first_layer_size'] = 512   # neurons in the first layer
     params['second_layer_size'] = 256   # neurons in the second layer
     params['third_layer_size'] = 128    # neurons in the third layer
-    params['episodes'] = 20            
+    params['episodes'] = 120            
     params['memory_size'] = 2500
     params['batch_size'] = 500
     #params['weights_path'] = 'weights/weights.hdf5'
@@ -56,11 +56,16 @@ class DQNAgent(object):
 
     def network(self):
         model = Sequential()
-        model.add(Dense(self.first_layer, activation='relu', input_shape=(256,)))
+        model.add(Conv2D(2,(2,2), input_shape=(16,16,1), activation='relu'))
+        model.add(MaxPool2D(2,2))
+        model.add(Conv2D(8,(2,2), activation='relu'))
+        model.add(MaxPool2D(2,2))
+        model.add(Flatten())
+        #model.add(Dense(self.first_layer, activation='relu', input_shape=(256,)))
         model.add(Dense(self.second_layer, activation='relu'))
         model.add(Dense(self.third_layer, activation='relu'))
-        model.add(Dense(4, activation='linear'))
-        opt = Adam(self.learning_rate, amsgrad=False)
+        model.add(Dense(4, activation='softmax'))
+        opt = Adam(self.learning_rate, amsgrad=True)
         model.compile(loss='mse', optimizer=opt)
         return model
 
@@ -76,10 +81,10 @@ class DQNAgent(object):
         for state, action, reward, next_state, done in minibatch:
             target = reward
             if not done:
-                target = reward + self.gamma * np.amax(self.model.predict(next_state.flatten().reshape(1,256)))
-            target_f = self.model.predict(np.array(state.flatten().reshape(1,256)))
+                target = reward + self.gamma * np.amax(self.model.predict(next_state[np.newaxis,:,:,np.newaxis])) #.flatten().reshape(1,256)))  | new axis for color chanel
+            target_f = self.model.predict(state[np.newaxis,:,:,np.newaxis]) #np.array(sdfsdf).flatten().reshape(1,256)))
             target_f[0][np.argmax(action)] = target
-            self.model.fit(np.array(state.flatten().reshape(1,256)), target_f, epochs=1, verbose=0)
+            self.model.fit(state[np.newaxis,:,:,np.newaxis], target_f, epochs=1, verbose=0) #.flatten().reshape(1,256)), target_f, epochs=1, verbose=0)
             
             
     '''def train_short_memory(self, state, action, reward, next_state, done):
@@ -93,12 +98,12 @@ class DQNAgent(object):
     def train_short_memory(self, state, action, reward, next_state, done):
         target = reward
         if not done:
-            target = reward + self.gamma * np.amax(self.model.predict(np.asarray(next_state.flatten().reshape(1,256)))[0])
-        target_f = self.model.predict(np.asarray(state.flatten().reshape(1,256)))
+            target = reward + self.gamma * np.amax(self.model.predict(next_state[np.newaxis,:,:,np.newaxis])) #.flatten().reshape(1,256)))[0])
+        target_f = self.model.predict(state[np.newaxis,:,:,np.newaxis]) #.flatten().reshape(1,256)))
         #print(target_f)
         target_f[0][np.argmax(action)] = target
         #print(target_f)
-        self.model.fit(state.flatten().reshape(1,256), target_f, epochs=1, verbose=0)
+        self.model.fit(state[np.newaxis,:,:,np.newaxis], target_f, epochs=1, verbose=0) #.flatten().reshape(1,256), target_f, epochs=1, verbose=0)
 
 
 
@@ -138,7 +143,7 @@ def run(params):
                 final_move = tf.keras.utils.to_categorical(np.random.randint(0,2), num_classes=4)
             else:
                 #predict
-                prediction = agent.model.predict(state_old.flatten().reshape(1,256)) #reshape?
+                prediction = agent.model.predict(state_old[np.newaxis,:,:,np.newaxis]) #.flatten().reshape(1,256)) #reshape?
                 #prediction = agent.model.predict(state_old.reshape(1,16,16))
                 #final_move = np.argmax(prediction, axis=1)[0] #tf.keras.utils.to_categorical(np.argmax(prediction[0]), num_classes=3) # ???
                 final_move = tf.keras.utils.to_categorical(np.argmax(prediction[0]), num_classes=4)
@@ -168,7 +173,7 @@ def run(params):
         obs = env.reset()
         done = False
         while not done:
-            state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(np.asarray(obs.flatten().reshape(1,256)))))
+            state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(obs[np.newaxis,:,:,np.newaxis]))) #.flatten().reshape(1,256)))))
             env.render()
         print(reward)    
             
@@ -177,5 +182,3 @@ def run(params):
 if __name__ == '__main__':
     params = define_parameters()
     run(params)        
-        
-                   
