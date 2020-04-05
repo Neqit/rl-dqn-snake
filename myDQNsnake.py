@@ -24,9 +24,9 @@ def define_parameters():
     params['epsilon_decay_linear'] = 1/75
     params['learning_rate'] = 0.0005
     params['first_layer_size'] = 512   # neurons in the first layer
-    params['second_layer_size'] = 256   # neurons in the second layer
-    params['third_layer_size'] = 128    # neurons in the third layer
-    params['episodes'] = 120            
+    params['second_layer_size'] = 128   # neurons in the second layer
+    params['third_layer_size'] = 32    # neurons in the third layer
+    params['episodes'] = 250           
     params['memory_size'] = 2500
     params['batch_size'] = 500
     #params['weights_path'] = 'weights/weights.hdf5'
@@ -64,7 +64,7 @@ class DQNAgent(object):
         #model.add(Dense(self.first_layer, activation='relu', input_shape=(256,)))
         model.add(Dense(self.second_layer, activation='relu'))
         model.add(Dense(self.third_layer, activation='relu'))
-        model.add(Dense(4, activation='softmax'))
+        model.add(Dense(4, activation='linear'))
         opt = Adam(self.learning_rate, amsgrad=True)
         model.compile(loss='mse', optimizer=opt)
         return model
@@ -140,7 +140,7 @@ def run(params):
             #perform random action based on agent.epsilon, or choose the action from NN
             if np.random.randint(0,1) < agent.epsilon: # random int??
                 #final_move = np.random.randint(0,3) #tf.keras.utils.to_categorical(np.random.randint(0,3)) #num_classes=3
-                final_move = tf.keras.utils.to_categorical(np.random.randint(0,2), num_classes=4)
+                final_move = tf.keras.utils.to_categorical(np.random.randint(0,3), num_classes=4)
             else:
                 #predict
                 prediction = agent.model.predict(state_old[np.newaxis,:,:,np.newaxis]) #.flatten().reshape(1,256)) #reshape?
@@ -172,8 +172,10 @@ def run(params):
     for i in range(10):
         obs = env.reset()
         done = False
+        state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(obs[np.newaxis,:,:,np.newaxis])))
+        env.render()
         while not done:
-            state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(obs[np.newaxis,:,:,np.newaxis]))) #.flatten().reshape(1,256)))))
+            state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(state_new[np.newaxis,:,:,np.newaxis]))) #.flatten().reshape(1,256)))))
             env.render()
         print(reward)    
             
@@ -182,3 +184,5 @@ def run(params):
 if __name__ == '__main__':
     params = define_parameters()
     run(params)        
+        
+                   
