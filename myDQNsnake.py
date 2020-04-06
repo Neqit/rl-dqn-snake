@@ -21,12 +21,12 @@ import sneks
 
 def define_parameters():
     params = dict()
-    params['epsilon_decay_linear'] = 1/199
+    params['epsilon_decay_linear'] = 1/900
     params['learning_rate'] = 0.0005
-    params['first_layer_size'] = 512   # neurons in the first layer
-    params['second_layer_size'] = 128   # neurons in the second layer
-    params['third_layer_size'] = 32    # neurons in the third layer
-    params['episodes'] = 1000           
+    params['first_layer_size'] = 200   # neurons in the first layer
+    params['second_layer_size'] = 100   # neurons in the second layer
+    params['third_layer_size'] = 50    # neurons in the third layer
+    params['episodes'] = 1000         
     params['memory_size'] = 2500
     params['batch_size'] = 150
     #params['weights_path'] = 'weights/weights.hdf5'
@@ -118,16 +118,16 @@ def preprocess(state):
 
     # vision is 4 booleans that tell if in left, right, upward, downward is a barrier
     vision = []
-    if state[head[0]-1][head[1]] != 0:
+    if state[head[0]-1][head[1]] != 0.0 and state[head[0]-1][head[1]] != 64.0:
         vision.append(1)
     else: vision.append(0)
-    if state[head[0]+1][head[1]] != 0:
+    if state[head[0]+1][head[1]] != 0.0 and state[head[0]+1][head[1]] != 64.0:
         vision.append(1)
     else: vision.append(0)
-    if state[head[0]][head[1]-1] != 0:
+    if state[head[0]][head[1]-1] != 0.0 and state[head[0]][head[1]-1] != 64.0:
         vision.append(1)
     else: vision.append(0)
-    if state[head[0]][head[1]+1] != 0:
+    if state[head[0]][head[1]+1] != 0.0 and state[head[0]][head[1]+1] != 64.0:
         vision.append(1)
     else: vision.append(0)
 
@@ -137,19 +137,16 @@ def preprocess(state):
     food = np.asarray(food)
     food = food.squeeze()
     
-    rel_food_pos_x = abs(head[0] - food[0])
-    rel_food_pos_y = abs(head[1] - food[1])
+    rel_food_pos_x = head[0] - food[0]
+    rel_food_pos_y = head[1] - food[1]
     
+    #Adding relative pos of food to vision
     vision.append(rel_food_pos_x)
     vision.append(rel_food_pos_y)
     
     return tf.reshape(np.asarray(vision),(1,6))
     
     
-   
-    
-    
-
 
 
 def run(params):
@@ -185,10 +182,10 @@ def run(params):
             #print(agent.epsilon)
             #get old state
             state_old = env._get_state()
-            env.render()
+            #env.render()
             
-            visionn = []
-            visionn = preprocess(state_old)
+            #visionn = []
+            #visionn = preprocess(state_old)
             
             #perform random action based on agent.epsilon, or choose the action from NN
             if np.random.random() < agent.epsilon: # random int??
@@ -207,14 +204,19 @@ def run(params):
             #perform new move and agent new state
             state_new, reward, done, _ = env.step(np.ndarray.tolist(final_move).index(np.amax(final_move)))
             
-            #env.render()
+            if done:
+                    if steps2 <= 15:
+                        reward = reward - 9
+            
+            env.render()
             rewards.append(reward)
             rewards2.append(reward)
             #env.render()
             if params['train']:
                 #train short memory
+                
                 agent.train_short_memory(state_old, final_move, reward, state_new, done)
-                agent.remember(state_old, final_move, reward, state_new, done)
+                #agent.remember(state_old, final_move, reward, state_new, done)
             
             if steps % 20 == 0:
                 awg_rwd = np.asarray(rewards)
@@ -222,7 +224,7 @@ def run(params):
             
             #record
         episode = episode + 1    
-        print('espilon: ' + str(agent.epsilon) + ' EpReward: ' + str((sum(np.asarray(rewards2)))/steps2) + 'Action: '+ choosen_action)
+        print('espilon: ' + str(agent.epsilon) + ' EpReward: ' + str(sum(np.asarray(rewards2))) + ' Action: '+ choosen_action)
         print('episode: ' + str(episode))        
         if params['train']:
             #agent.replay_new(agent.memory, params['batch_size'])
@@ -231,12 +233,14 @@ def run(params):
     for i in range(10):
         obs = env.reset()
         done = False
-        state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(obs[np.newaxis,:,:,np.newaxis])))
+        state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(preprocess(obs))))
         env.render()
+        rewards = []
         while not done:
-            state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(state_new[np.newaxis,:,:,np.newaxis]))) #.flatten().reshape(1,256)))))
+            state_new, reward, done, _ = env.step(np.argmax(agent.model.predict(preprocess(state_new)))) #.flatten().reshape(1,256)))))
             env.render()
-        print(reward)    
+            rewards.append(reward)
+        print('Total ep reward: ' + str(sum(np.asarray(rewards))))   
             
 
 
