@@ -19,6 +19,7 @@ import sneks
 import datetime
 import random
 import collections
+import time
 
 
 def parameters_defenition():
@@ -41,6 +42,22 @@ def parameters_defenition():
     return parameters
 
 
+def cuda_memgrowth():
+    import tensorflow as tf
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            # Currently, memory growth needs to be the same across GPUs
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+            print(len(gpus), "Physical GPUs,", len(
+                logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            # Memory growth must be set before GPUs have been initialized
+            print(e)
+
+
 def draw_graph(reward, name):
     plt.plot(np.asarray(reward))
     plt.title(name)
@@ -59,8 +76,8 @@ class DQNAgent(object):
         self.third_layer_size = parameters['third_layer_size']
         self.long_memory = collections.deque(maxlen = parameters['memory_size'])
         self.model = self.neural_network()
-        
-        
+
+
     def neural_network(self):
         model = Sequential()
         model.add(Dense(self.first_layer_size, activation = 'relu', input_dim = 6))
@@ -70,51 +87,51 @@ class DQNAgent(object):
         model_optimizer = Adam(self.learning_rate, amsgrad = True)
         model.compile(loss = 'mse', optimizer = model_optimizer)
         return model
-    
-    
+
+
     @staticmethod
     def preprocess(state):
-            
+
         #Finding of the head of snake
         head = np.where(state == 101)
         head = np.asarray(head)
         head = head.squeeze()
-    
+
         # vision is 4 booleans that tell if in left, right, upward, downward is a barrier
-        vision = []
+        vision = np.zeros(6)
         if state[head[0]-1][head[1]] != 0.0 and state[head[0]-1][head[1]] != 64.0:
-            vision.append(1)
-        else: vision.append(0)
+            vision[0]=1
+        else: vision[0]=0
         if state[head[0]+1][head[1]] != 0.0 and state[head[0]+1][head[1]] != 64.0:
-            vision.append(1)
-        else: vision.append(0)
+            vision[1]=1
+        else: vision[1]=0
         if state[head[0]][head[1]-1] != 0.0 and state[head[0]][head[1]-1] != 64.0:
-            vision.append(1)
-        else: vision.append(0)
+            vision[2]=1
+        else: vision[2]=0
         if state[head[0]][head[1]+1] != 0.0 and state[head[0]][head[1]+1] != 64.0:
-            vision.append(1)
-        else: vision.append(0)
-    
-      
+            vision[3]=1
+        else: vision[3]=0
+
+
         #Finding relative position of food to snake's head
         food = np.where(state == 64)
         food = np.asarray(food)
         food = food.squeeze()
-        
+
         rel_food_pos_x = head[0] - food[0]
         rel_food_pos_y = head[1] - food[1]
-        
+
         #Adding relative pos of food to vision
-        vision.append(rel_food_pos_x)
-        vision.append(rel_food_pos_y)
-        
-        return tf.reshape(np.asarray(vision),(1,6))
-        
+        vision[4] = rel_food_pos_x
+        vision[5] = rel_food_pos_y
+
+        return np.reshape(vision,(1,6))
+
 
     def update_long_memory(self, state, action, reward, next_state, done):
         self.long_memory.append((state, action, reward, next_state, done))
-    
-    
+
+
     def train_long_memory(self, memory_to_train, memory_batch):
         if len(memory_to_train) > memory_batch:
             batch_to_train = random.sample(memory_to_train, memory_batch)
@@ -125,46 +142,48 @@ class DQNAgent(object):
             input_state = self.preprocess(state)
             if not done:
                 input_next_state = self.preprocess(next_state)
-                target = reward + self.gamma * np.amax(self.model.predict(input_next_state))
-            target_expected = self.model.predict(input_state)
+                target = reward + self.gamma * np.amax(self.model(input_next_state, training=True))
+            target_expected = self.model(input_state, training=True).numpy()
             target_expected[0][np.argmax(action)] = target
-            self.model.fit(input_state, target_expected, epochs = 1, verbose = 0)
-            
-          
+            self.model.train_on_batch(input_state, target_expected)
+
+
     def train_short_memory(self, state, action, reward, next_state, done):
         target = reward
         input_state = self.preprocess(state)
         if not done:
             input_next_state = self.preprocess(next_state)
-            target = reward + self.gamma * np.amax(self.model.predict(input_next_state))
-        target_expected = self.model.predict(input_state)
+            target = reward + self.gamma * np.amax(self.model(input_next_state, training=True))
+        target_expected = self.model(input_state, training=True).numpy()
         target_expected[0][np.argmax(action)] = target
-        self.model.fit(input_state, target_expected, epochs = 1, verbose = 0)
-        
-        
+        self.model.train_on_batch(input_state, target_expected)
+
+
     def test_runs(self, tests, env):
         for runs in range(tests):
             observation = env.reset()
             done = False
             rewards = []
-            state_new, reward, done, _ = env.step(np.argmax(self.model.predict(self.preprocess(observation))))
+            state_new, reward, done, _ = env.step(np.argmax(self.model(self.preprocess(observation))))
             while not done:
-                state_new, reward, done, _ = env.step(np.argmax(self.model.predict(self.preprocess(state_new))))
+                state_new, reward, done, _ = env.step(np.argmax(self.model(self.preprocess(state_new))))
                 env.render()
                 rewards.append(reward)
             print('Total episode reward: ' + str(sum(np.asarray(rewards))))    
-                
-        
-        
+
+
 def train_model(parameters):
     env = gym.make(parameters['environment'])
-    
+
+    start = time.time()
     agent = DQNAgent(parameters)
     if parameters['train']:
         #initialization
         episodes_played = 0
         total_train_reward = []
-        
+
+        agent.model.summary()
+
         while episodes_played < parameters['episodes_to_play']:
             steps = 0
             episode_reward = []
@@ -174,51 +193,50 @@ def train_model(parameters):
                 agent.epsilon = 1 - (episodes_played * parameters['epsilon_decay'])
                 if agent.epsilon < 0:
                     agent.epsilon = 0
-                    
+
                 state_old = env._get_state()
                 input_state_old = agent.preprocess(state_old)
-                
+
 
                 if np.random.random() < agent.epsilon:
                     action_to_do = tf.keras.utils.to_categorical(np.random.randint(0,3), num_classes = 4)
                 else:
                     prediction = agent.model.predict(input_state_old)
                     action_to_do = tf.keras.utils.to_categorical(np.argmax(prediction), num_classes = 4)
-                    
+
                 next_state, reward, done , _ = env.step(np.ndarray.tolist(action_to_do).index(np.amax(action_to_do)))
                 episode_reward.append(reward)
-                
+
                 if parameters['render']:
                     env.render()
-                
+
                 agent.train_short_memory(state_old, action_to_do, reward, next_state, done)
                 agent.update_long_memory(state_old, action_to_do, reward, next_state, done)
                 steps += 1
-            
+
             episodes_played += 1    
             agent.train_long_memory(agent.long_memory, parameters['memory_batch'])
             total_train_reward.append(sum(episode_reward))
-            
+
+            end = time.time()
             if parameters['console_log']:
-                 print('Epsilon: ' + str(agent.epsilon) + ' EpReward: ' + str(sum(np.asarray(episode_reward))) + ' Episode: ' + str(episodes_played) + ' Steps: ' + str(steps))
-                 
+                 print('Epsilon: ' + str(agent.epsilon) + ' EpReward: ' + str(sum(np.asarray(episode_reward))) + ' Episode: ' + str(episodes_played) + ' Steps: ' + str(steps) + ' Time: ' + str(round(end - start))+' sec')
+
         agent.test_runs(10, env)
         draw_graph(total_train_reward, parameters['output_activation'])
         agent.model.save_weights(parameters['weights_name']) 
         print('Model was saved as ' + parameters['weights_name'])
-        env.close()                
-         
+        env.close()
+
     else:
         print('Print weights name (should be in the same directory as script): ')
         weights_name = input()
         agent.model.load_weights(weights_name)
         agent.test_runs(10, env)
         env.close() 
-             
-    
-        
+
+
 if __name__ == '__main__':
     parameters = parameters_defenition()
+    cuda_memgrowth()
     train_model(parameters)
-    
-            
