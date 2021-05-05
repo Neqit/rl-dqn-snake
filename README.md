@@ -1,2 +1,2 @@
 # rl-dqn-snake
-Reinforcement learning agent for playing snake game
+Reinforcement learning agent trained via Deep Q Network for playing snake game 
